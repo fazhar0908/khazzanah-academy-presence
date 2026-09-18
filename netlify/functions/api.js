@@ -16,26 +16,51 @@ export async function handler(event) {
     return { statusCode: 204, headers };
   }
 
-  console.log("=== INCOMING REQUEST ===");
-  console.log("Method:", event.httpMethod);
-  console.log("Query:", JSON.stringify(event.queryStringParameters));
-  console.log("Raw Body:", event.body);
-
   try {
     let body = {};
     if (event.body) {
       try {
         body = typeof event.body === "string" ? JSON.parse(event.body) : event.body;
       } catch (e) {
-        console.log("Body parse error, continuing with empty body");
+        body = {};
       }
     }
 
     const query = event.queryStringParameters || {};
     const action = query.action || query.type || body.action || body.type;
-    console.log("Resolved Action:", action);
+    const payload = body.payload || {};
 
-    // 1. Inisialisasi / Sync / Data Awal / GET
+    // 1. LOGIN ADMIN (Sesuai panggilan dari frontend)
+    if (action === "adminLogin") {
+      const inputPass = payload.masterPassword || body.masterPassword || body.password || "";
+      const MASTER_PASS = "khazzanah26";
+
+      if (inputPass === MASTER_PASS) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            status: "success",
+            success: true,
+            result: "success",
+            token: "admin_token_active_" + Date.now(),
+            message: "Login admin berhasil"
+          }),
+        };
+      } else {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            status: "error",
+            success: false,
+            message: "Password Admin tidak valid"
+          }),
+        };
+      }
+    }
+
+    // 2. GET SEMUA DATA / SYNC / INIT
     if (!action || action === "sync" || action === "init" || action === "get_all" || action === "getData" || event.httpMethod === "GET") {
       const users = await db.execute("SELECT id, username, email, phone, first_name, last_name, role, domicile, photo_url, qr_code_token, is_verified FROM users");
       const kmp = await db.execute(`
@@ -52,6 +77,7 @@ export async function handler(event) {
         headers,
         body: JSON.stringify({
           status: "success",
+          success: true,
           result: "success",
           users: users.rows,
           kmp_ranking: kmp.rows,
@@ -65,12 +91,10 @@ export async function handler(event) {
       };
     }
 
-    // 2. Login
+    // 3. LOGIN USER REGULER
     if (action === "login") {
-      const idVal = body.identifier || body.username || body.email || query.identifier || query.username || "";
-      const passVal = body.password || query.password || "";
-
-      console.log("Attempt login for:", idVal);
+      const idVal = (payload.identifier || body.identifier || body.username || body.email || "").trim();
+      const passVal = (payload.password || body.password || "").trim();
 
       const res = await db.execute({
         sql: "SELECT * FROM users WHERE (username = ? OR email = ? OR phone = ?) AND password_hash = ? LIMIT 1",
@@ -81,55 +105,66 @@ export async function handler(event) {
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ status: "error", message: "Username/Email atau Password salah" }),
+          body: JSON.stringify({ status: "error", success: false, message: "Username atau Password salah" }),
         };
       }
 
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ status: "success", result: "success", user: res.rows[0], data: res.rows[0] }),
+        body: JSON.stringify({
+          status: "success",
+          success: true,
+          result: "success",
+          user: res.rows[0],
+          data: res.rows[0]
+        }),
       };
     }
 
-    // 3. Register
+    // 4. REGISTRASI
     if (action === "register") {
+      const data = payload.username ? payload : body;
       await db.execute({
         sql: `INSERT INTO users (username, email, phone, first_name, last_name, role, domicile, password_hash, qr_code_token, is_verified) 
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
         args: [
-          (body.username || query.username || "").toLowerCase(),
-          (body.email || query.email || "").toLowerCase(),
-          body.phone || query.phone || "",
-          body.firstName || body.first_name || query.firstName || "",
-          body.lastName || body.last_name || query.lastName || "",
-          body.role || query.role || "User",
-          (body.domicile || query.domicile || "").toUpperCase(),
-          body.password || body.password_hash || query.password || "",
-          `QR_${(body.username || "USER").toUpperCase()}_${Date.now()}`
+          (data.username || "").toLowerCase().trim(),
+          (data.email || "").toLowerCase().trim(),
+          (data.phone || "").trim(),
+          data.firstName || data.first_name || "",
+          data.lastName || data.last_name || "",
+          data.role || "User",
+          (data.domicile || "").toUpperCase(),
+          data.password || data.password_hash || "",
+          `QR_${(data.username || "USER").toUpperCase()}_${Date.now()}`
         ]
       });
 
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ status: "success", result: "success", message: "Pendaftaran berhasil" }),
+        body: JSON.stringify({ status: "success", success: true, result: "success", message: "Registrasi berhasil" }),
       };
     }
 
-    // Default fallback agar frontend tidak menerima status 400/500
+    // FALLBACK RESPON UNIVERSAL
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ status: "success", result: "success", message: "Request processed", data: [] }),
+      body: JSON.stringify({
+        status: "success",
+        success: true,
+        result: "success",
+        data: []
+      }),
     };
 
   } catch (err) {
-    console.error("FUNCTION ERROR:", err.message);
     return {
       statusCode: 500,
       headers,
-      body: JSON.stringify({ status: "error", message: err.message }),
+      body: JSON.stringify({ status: "error", success: false, message: err.message }),
     };
   }
 }

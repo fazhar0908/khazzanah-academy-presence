@@ -16,11 +16,12 @@
   <meta name="apple-mobile-web-app-title" content="KAP Presence">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
-  <script>
-  // Mematikan warning console Tailwind Play CDN
+  <!-- Inisialisasi objek agar tidak error ReferenceError -->
+<script>
   window.tailwind = window.tailwind || {};
-  window.tailwind.config = window.tailwind.config || {};
 </script>
+
+<!-- Muat Tailwind Play CDN -->
 <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
